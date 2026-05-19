@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Netrunner Identifier — Offscreen</title>
+  </head>
+  <body>
+    <!-- This document is never shown. It exists so the extension can run a
+         Web Worker (for onnxruntime-web's WASM/SIMD threads) inside the
+         extension origin, bypassing host-page CSP and same-origin Worker
+         constraints that block content scripts. -->
+    <script type="module" src="offscreen.js"></script>
+  </body>
+</html>

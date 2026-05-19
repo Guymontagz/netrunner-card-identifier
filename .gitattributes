@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# Binary artifacts — never line-end-converted, never diffed as text.
+*.png binary
+*.jpg binary
+*.wasm binary
+*.onnx binary
+*.bin binary
+*.zip binary

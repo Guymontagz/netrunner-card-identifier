@@ -1,0 +1,21 @@
+# Python build environment
+.venv/
+
+# Catalog builder cache (NRDB card images)
+.cache/
+
+# onnxruntime-web vendor files — fetched via tools/fetch-vendor.sh
+src/vendor/ort/
+
+# Packaged extension ZIPs
+dist/
+*.zip
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor metadata
+.vscode/
+.idea/
+*.swp

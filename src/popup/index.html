@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Netrunner Card Identifier</title>
+    <style>
+      body {
+        font: 13px/1.4 system-ui, sans-serif;
+        margin: 0;
+        padding: 12px;
+        width: 260px;
+        background: #1a1a1a;
+        color: #eaeaea;
+      }
+      h1 {
+        font-size: 13px;
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 4px 8px;
+        margin: 0 0 12px;
+      }
+      dt {
+        color: #999;
+      }
+      dd {
+        margin: 0;
+        font-variant-numeric: tabular-nums;
+        word-break: break-all;
+      }
+      button {
+        width: 100%;
+        padding: 6px 8px;
+        background: #9147ff;
+        color: #fff;
+        border: 0;
+        border-radius: 4px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      #status {
+        margin-top: 8px;
+        min-height: 1em;
+        color: #aaa;
+      }
+      #status.err {
+        color: #ff6b6b;
+      }
+      #about {
+        margin: 12px 0 0;
+        font-size: 11px;
+        color: #888;
+      }
+      #about a {
+        color: #b288ff;
+        text-decoration: none;
+      }
+      #about a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Netrunner Card Identifier</h1>
+    <dl>
+      <dt>Card pool</dt>
+      <dd id="pool">—</dd>
+      <dt>Cards</dt>
+      <dd id="count">—</dd>
+      <dt>Last sync</dt>
+      <dd id="last">—</dd>
+    </dl>
+    <button id="sync">Sync now</button>
+    <div id="status"></div>
+    <p id="about">
+      <a href="#" id="about-link">About &amp; source</a>
+    </p>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

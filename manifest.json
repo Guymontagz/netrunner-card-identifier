@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Netrunner Card Identifier",
+  "version": "0.1.0",
+  "description": "Identify Netrunner cards in stream and tournament video footage with Alt+drag, plus hover-to-zoom on any NetrunnerDB card image.",
+  "icons": {
+    "16": "src/icons/icon-16.png",
+    "32": "src/icons/icon-32.png",
+    "48": "src/icons/icon-48.png",
+    "128": "src/icons/icon-128.png"
+  },
+  "permissions": ["storage", "alarms", "offscreen"],
+  "host_permissions": [
+    "https://api-preview.netrunnerdb.com/*",
+    "https://card-images.netrunnerdb.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "action": {
+    "default_title": "Netrunner Card Identifier",
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "src/icons/icon-16.png",
+      "32": "src/icons/icon-32.png",
+      "48": "src/icons/icon-48.png",
+      "128": "src/icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "src/content/overlay.js",
+        "src/content/hover.js",
+        "src/content/video-click.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/vendor/ort/*",
+        "src/model/*",
+        "src/offscreen/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

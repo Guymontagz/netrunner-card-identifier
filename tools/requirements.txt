@@ -1,0 +1,5 @@
+# For running tools/build-catalog.py.
+# Python 3.10+ recommended.
+numpy>=1.24
+pillow>=10.0
+onnxruntime>=1.17
