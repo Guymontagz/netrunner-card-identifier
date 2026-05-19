@@ -16,6 +16,7 @@ it is required for the extension to function — it's only for publishing.
 
 - [ ] Run `bash tools/package.sh` to produce `dist/netrunner-card-identifier-{version}.zip`
 - [ ] Capture three 1280 × 800 screenshots → `store/screenshots/`
+      **Use a physical-cardboard stream (Neon Static / tournament VOD) for the video screenshot, NOT jinteki.net. Jinteki video is the weak case and shouldn't appear in store assets.**
 - [ ] (Optional) Design a 440 × 280 promo tile → `store/promo-tile-440x280.png`
 - [ ] Enable GitHub Pages on the repo so `privacy-policy.md` is publicly served
 - [ ] Register a Chrome Web Store developer account ($5 one-time fee)

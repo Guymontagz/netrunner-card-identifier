@@ -89,7 +89,9 @@ model and matching against a NetrunnerDB card catalog.
 Need 1280 × 800 PNGs under `store/screenshots/`:
 
 1. `01-video-identify.png` — Alt+drag selection rectangle around a card in
-   a Netrunner YouTube VOD, with the matched card overlay visible.
+   a **physical-cardboard webcam stream** (Neon Static / tournament VOD),
+   with the matched card overlay visible. **Do NOT use jinteki.net footage**
+   — that's the weak case and shouldn't appear in promotional material.
 2. `02-hover-image.png` — Hover on a NetrunnerDB card thumbnail showing
    the floating overlay.
 3. `03-popup.png` — The toolbar popup showing card pool / sync status.

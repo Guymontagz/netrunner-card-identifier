@@ -49,13 +49,19 @@ Then in Chrome:
 
 ## Use
 
-**Identify a card in a video:**
-1. Pause a YouTube/Twitch video on a clear frame.
+**Identify a card in a video** (works on physical-cardboard footage — see
+Scope below):
+1. Pause a YouTube/Twitch video showing a physical Netrunner game on a
+   clear frame.
 2. Hold **⌥ (Option)** / **Alt** and **drag** a rectangle around the card.
    The selection rectangle locks to card aspect, in the orientation matching
    your drag direction.
 3. The matched card image floats next to your cursor. Click it or press
    **Escape** to dismiss.
+
+> **Note:** Don't test on jinteki.net video — that's a known weak case and
+> a separate recognizer is planned for a future release. Use webcam-on-mat
+> tournament footage instead.
 
 The page console (Cmd+Opt+I → Console) prints `[netrunner-video]` lines
 with the top-3 cosine matches per drag, useful when accuracy is off.
