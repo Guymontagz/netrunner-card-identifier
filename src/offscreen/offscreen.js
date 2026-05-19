@@ -148,22 +148,28 @@ function l2Normalize(vec) {
 }
 
 // Cosine similarity (since catalog rows + query are L2-normalised, this is
-// just a dot product) against every catalog row.
+// just a dot product) against every catalog row. Deduped by cardId: when
+// the same card appears under multiple printings or orientations, we keep
+// the highest-scoring row so the top-k contains k *distinct* cards. Without
+// this, margin checks misfire when two alt-art printings of the same card
+// both land at the top with near-identical scores.
 function topMatches(query, k = 3) {
   const { catalog, rows, dim } = state;
-  const top = [];
+  const bestByCard = new Map();
   for (let r = 0; r < rows.length; r++) {
     const base = r * dim;
     let s = 0;
     for (let i = 0; i < dim; i++) s += query[i] * catalog[base + i];
-    // Maintain a small sorted top-k.
-    if (top.length < k || s > top[top.length - 1].score) {
-      top.push({ score: s, row: r });
-      top.sort((a, b) => b.score - a.score);
-      if (top.length > k) top.length = k;
+    const cardId = rows[r].cardId;
+    const prev = bestByCard.get(cardId);
+    if (!prev || s > prev.score) {
+      bestByCard.set(cardId, { score: s, row: r });
     }
   }
-  return top.map(({ score, row }) => ({ score, ...rows[row] }));
+  return [...bestByCard.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k)
+    .map(({ score, row }) => ({ score, ...rows[row] }));
 }
 
 async function identify(image) {

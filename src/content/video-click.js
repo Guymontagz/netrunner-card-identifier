@@ -24,6 +24,14 @@
   // but the right card should still clearly beat noise.
   const COS_ABS = 0.6;
   const COS_MARGIN = 0.05;
+  // Identity cards (landscape, with shared layout — name banner + portrait
+  // art panel + abilities strip) cluster tighter in the embedder's feature
+  // space than regular cards do. A correct identity match in video lands
+  // around 0.55–0.65 with margins of 0.025–0.04, both under the regular
+  // gates. Use a looser pair when the top-1 is an identity.
+  const COS_ABS_IDENTITY = 0.5;
+  const COS_MARGIN_IDENTITY = 0.025;
+  const IDENTITY_TYPES = new Set(["corp_identity", "runner_identity"]);
 
   // --- drag state + selection rectangle UI -------------------------------
   let dragging = false;
@@ -235,14 +243,20 @@
       const best = top[0];
       const second = top[1];
       const margin = second ? best.score - second.score : Infinity;
-      if (best.score < COS_ABS) {
-        console.warn(TAG, `no confident match — best cos ${best.score.toFixed(3)} < ${COS_ABS}`);
-        return;
-      }
-      if (margin < COS_MARGIN) {
+      const isIdentity = IDENTITY_TYPES.has(best.type);
+      const absGate = isIdentity ? COS_ABS_IDENTITY : COS_ABS;
+      const marginGate = isIdentity ? COS_MARGIN_IDENTITY : COS_MARGIN;
+      if (best.score < absGate) {
         console.warn(
           TAG,
-          `ambiguous — best ${best.score.toFixed(3)} vs runner-up ${second.score.toFixed(3)} (margin ${margin.toFixed(3)} < ${COS_MARGIN})`,
+          `no confident match — best cos ${best.score.toFixed(3)} < ${absGate}${isIdentity ? " (identity)" : ""}`,
+        );
+        return;
+      }
+      if (margin < marginGate) {
+        console.warn(
+          TAG,
+          `ambiguous — best ${best.score.toFixed(3)} vs runner-up ${second.score.toFixed(3)} (margin ${margin.toFixed(3)} < ${marginGate}${isIdentity ? " identity" : ""})`,
         );
         return;
       }
