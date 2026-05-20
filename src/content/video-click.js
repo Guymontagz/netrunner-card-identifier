@@ -18,18 +18,19 @@
   const CARD_ASPECT = 0.715;
   const MIN_DRAG_PX = 30;
 
-  // Cosine thresholds for the embedder. With Milo's 128-d L2-normalised
-  // output, self-match = 1.0 and nearest-non-self is ~0.5–0.6 in our
-  // offline sanity check. Compressed video crops will pull the score down,
-  // but the right card should still clearly beat noise.
-  const COS_ABS = 0.6;
+  // Cosine thresholds for the embedder. Self-match = 1.0; offline
+  // sanity-check nearest-non-self ≈ 0.5–0.6. Compressed video pulls the
+  // best score down; tuning these is the main accuracy/false-positive
+  // dial. Loosened on May 19 after J-variant augmentation shipped — many
+  // jinteki matches land in the 0.50–0.60 band that the previous 0.60
+  // gate rejected.
+  const COS_ABS = 0.5;
   const COS_MARGIN = 0.05;
   // Identity cards (landscape, with shared layout — name banner + portrait
   // art panel + abilities strip) cluster tighter in the embedder's feature
-  // space than regular cards do. A correct identity match in video lands
-  // around 0.55–0.65 with margins of 0.025–0.04, both under the regular
-  // gates. Use a looser pair when the top-1 is an identity.
-  const COS_ABS_IDENTITY = 0.5;
+  // space than regular cards do. Use a looser pair when the top-1 is an
+  // identity.
+  const COS_ABS_IDENTITY = 0.45;
   const COS_MARGIN_IDENTITY = 0.025;
   const IDENTITY_TYPES = new Set(["corp_identity", "runner_identity"]);
 
