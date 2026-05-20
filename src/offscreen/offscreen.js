@@ -250,14 +250,18 @@ async function runOcr(image) {
   const srcCanvas = new OffscreenCanvas(image.width, image.height);
   srcCanvas.getContext("2d").putImageData(src, 0, 0);
 
-  // Landscape crops on jinteki are almost always ICE installed sideways,
-  // and the title text runs 90° to the long axis (left edge for the
-  // player's own ICE, right edge for the opponent's). Tesseract reads
-  // horizontal text, so we try both 90° rotations and concatenate the
-  // outputs — whichever rotation lands the title bar at the top wins.
-  // Portrait crops keep the existing single OCR pass.
+  // For landscape crops we don't know which of three things they are:
+  //   (a) installed ICE on the player's side → title on left, needs -90°
+  //   (b) installed ICE on the opponent's side → title on right, needs +90°
+  //   (c) a horizontal slice of a portrait card (hand/revealed/etc.) →
+  //       title already at the top, needs 0°
+  // Try all three and let titleSimilarity sort it out — one of the OCR
+  // passes will land the title bar at the top of its frame and produce
+  // clean text; the other two will return mostly noise that doesn't
+  // match any title well.
+  // Portrait crops only need 0°.
   const isLandscape = image.width > image.height * 1.1;
-  const rotations = isLandscape ? [-90, 90] : [0];
+  const rotations = isLandscape ? [0, -90, 90] : [0];
 
   const texts = [];
   for (const angle of rotations) {
