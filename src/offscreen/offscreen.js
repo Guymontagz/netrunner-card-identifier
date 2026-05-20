@@ -132,6 +132,12 @@ async function loadTesseract() {
       corePath: TESS_DIR,
       langPath: TESS_DIR,
       cacheMethod: "none",
+      // Don't wrap workerPath in a blob URL. The blob's origin would be the
+      // offscreen page's origin, but importScripts of chrome-extension URLs
+      // from inside that blob worker fails as cross-origin. Loading the
+      // worker directly from chrome-extension:// keeps everything in the
+      // same origin.
+      workerBlobURL: false,
     });
     // PSM 6 = treat the region as a single uniform block of text. Better
     // than the default for short card titles that span 1–2 lines.
