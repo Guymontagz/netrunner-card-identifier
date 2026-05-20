@@ -311,48 +311,49 @@ function levenshtein(a, b) {
   return prev[m];
 }
 
-// Longest contiguous run of characters shared by both strings. O(n*m)
-// in time and space — fine for short titles.
-function longestCommonSubstring(a, b) {
-  const m = a.length;
-  const n = b.length;
-  if (m === 0 || n === 0) return 0;
-  let prev = new Uint16Array(n + 1);
-  let curr = new Uint16Array(n + 1);
-  let best = 0;
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (a.charCodeAt(i - 1) === b.charCodeAt(j - 1)) {
-        curr[j] = prev[j - 1] + 1;
-        if (curr[j] > best) best = curr[j];
-      } else {
-        curr[j] = 0;
-      }
-    }
-    const t = prev; prev = curr; curr = t;
-    curr.fill(0);
-  }
-  return best;
+// Word-based similarity. Tokenize both strings, score each title word by
+// its best-matching OCR word (Levenshtein ratio), weight by title-word
+// length. Length weighting means "Knowledge" matters more than "of", so
+// false positives from short common words like "of" or "the" don't
+// inflate scores. Per-word threshold (0.6) also rules out random
+// 3-char coincidences while letting partial reads like "knowled" match
+// "knowledge" (sim ~0.78).
+function wordSimilarity(a, b) {
+  if (a === b) return 1;
+  if (!a || !b) return 0;
+  const d = levenshtein(a, b);
+  return Math.max(0, 1 - d / Math.max(a.length, b.length));
 }
 
-// Similarity between OCR text and a card title, in [0, 1].
-// 1.0 when the (normalized) title is a clean substring of the OCR text.
-// Partial OCR reads (e.g. "knowled" from "Knowledge Seeker") still get a
-// strong score because we use the longest common substring rather than
-// full-string Levenshtein — the latter punishes asymmetric lengths.
-function titleSimilarity(ocr, title) {
-  const o = normTitle(ocr);
-  const t = normTitle(title);
-  if (!o || !t || t.length < 3 || o.length < 3) return 0;
-  if (o.includes(t)) return 1.0;
-  const lcs = longestCommonSubstring(o, t);
-  // Reject matches too short to be meaningful — a 3-char coincidence
-  // would otherwise inflate scores for short titles.
-  if (lcs < 4) return 0;
-  // Normalize against the longer of (half the title length, 5). A 7-char
-  // overlap against a 16-char title is 7/8 = 0.875. A 5-char overlap
-  // against an 11-char title is 5/5.5 ≈ 0.91. Both feel right.
-  return Math.min(1.0, lcs / Math.max(5, t.length * 0.5));
+function tokenize(s) {
+  return normTitle(s)
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+}
+
+function titleSimilarity(ocrText, title) {
+  const titleWords = tokenize(title);
+  if (titleWords.length === 0) return 0;
+  const ocrWords = tokenize(ocrText);
+  if (ocrWords.length === 0) return 0;
+
+  // Full-title substring on the normalized form — cleanest possible signal.
+  const titleJoined = titleWords.join(" ");
+  const ocrJoined = ocrWords.join(" ");
+  if (ocrJoined.includes(titleJoined)) return 1.0;
+
+  let weighted = 0;
+  let total = 0;
+  for (const tw of titleWords) {
+    total += tw.length;
+    let best = 0;
+    for (const ow of ocrWords) {
+      const sim = wordSimilarity(ow, tw);
+      if (sim >= 0.6 && sim > best) best = sim;
+    }
+    weighted += tw.length * best;
+  }
+  return weighted / total;
 }
 
 async function identify(image) {
