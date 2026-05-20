@@ -81,11 +81,12 @@ with the top-3 cosine matches per drag, useful when accuracy is off.
 | Hover on NetrunnerDB / jinteki.net / forum card images | ✓ |
 | **jinteki.net play captured in YouTube/Twitch video** | ✗ Out of scope for v1 — the digital renders re-encoded by streaming don't match the embedder's training distribution well |
 | Cards smaller than ~50 px on a 1080p frame | ✗ Not enough pixels after the embedder's 448 × 448 downscale |
-| Non-Standard card pool | ✗ Catalog covers the active Standard format only |
 
-The catalog rebuilds against whatever NetrunnerDB lists as the active
-Standard pool at build time. Rerun `python tools/build-catalog.py` after a
-Standard rotation.
+The catalog ships with every Netrunner card NetrunnerDB tracks (the
+"Eternal" pool — FFG era through Null Signal era, ~2000 cards × ~9700
+catalog rows including all printings × 4 orientations). To rebuild after a
+new set drops: `python tools/build-catalog.py`. To scope to just the
+current Standard format: `python tools/build-catalog.py --pool standard`.
 
 ## Privacy
 

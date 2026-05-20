@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Build the Netrunner Standard card embedding catalog for the extension.
+"""Build the Netrunner card embedding catalog for the extension.
 
-Downloads the HanClinto/milo ONNX embedder, fetches the current Standard
-card pool from NetrunnerDB v3, and emits three artifacts under ``src/model``:
+Downloads the HanClinto/milo ONNX embedder, fetches a card pool from
+NetrunnerDB v3 (default: ``eternal`` — every card ever printed), and emits
+three artifacts under ``src/model``:
 
 * ``embedder.onnx`` — local copy of the model
 * ``catalog.bin`` — float32 row-major embeddings, shape ``(rows, dim)``
 * ``catalog.json`` — per-row metadata (card id, title, orientation, image URL)
 
 Usage:
-    python tools/build-catalog.py            # full Standard pool
-    python tools/build-catalog.py --limit 5  # smoke test on 5 cards
+    python tools/build-catalog.py                            # eternal pool (~9700 rows)
+    python tools/build-catalog.py --pool standard_2026_vantage_point  # current Standard only
+    python tools/build-catalog.py --limit 5                  # smoke test on 5 cards
 """
 
 from __future__ import annotations
@@ -52,18 +54,25 @@ def download_model(dest: Path) -> None:
     print(f"  wrote {dest} ({dest.stat().st_size // 1024} KB)")
 
 
-def fetch_standard_cards() -> tuple[str, list[dict]]:
-    fmt = json.loads(http_get(f"{NRDB_BASE}/formats/standard"))
-    pool_id = fmt["data"]["attributes"]["active_card_pool_id"]
-    print(f"  active Standard pool: {pool_id}")
-    url = f"{NRDB_BASE}/cards?filter[card_pool_id]={pool_id}&page[size]=1000"
+def resolve_pool_id(spec: str) -> str:
+    """Accept either a literal pool id or a format name. The format name
+    'standard' resolves to whatever the active Standard pool is today."""
+    if spec == "standard":
+        fmt = json.loads(http_get(f"{NRDB_BASE}/formats/standard"))
+        return fmt["data"]["attributes"]["active_card_pool_id"]
+    return spec
+
+
+def fetch_pool_cards(pool_id: str) -> list[dict]:
+    print(f"  card pool: {pool_id}")
+    url = f"{NRDB_BASE}/cards?filter[card_pool_id]={pool_id}&page[size]=3000"
     body = json.loads(http_get(url))
     cards = body["data"]
     expected = body.get("meta", {}).get("stats", {}).get("total", {}).get("count")
     if expected is not None and len(cards) != expected:
         raise SystemExit(f"pagination required: got {len(cards)} of {expected}")
     print(f"  fetched {len(cards)} cards")
-    return pool_id, cards
+    return cards
 
 
 def get_image(printing_id: str, cache_dir: Path) -> Image.Image:
@@ -97,6 +106,13 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=repo_root / "src" / "model")
     ap.add_argument("--cache", type=Path, default=repo_root / ".cache" / "build-catalog")
     ap.add_argument("--limit", type=int, default=0, help="Only process N cards (smoke test)")
+    ap.add_argument(
+        "--pool",
+        default="eternal",
+        help="Card pool id (default: eternal = every card ever printed). "
+        "Use 'standard' for the live Standard pool, or any specific pool id like "
+        "'standard_2026_vantage_point'.",
+    )
     args = ap.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -113,8 +129,9 @@ def main() -> None:
     print(f"  input  : {input_meta.name} shape={input_meta.shape} dtype={input_meta.type}")
     print(f"  output : {output_meta.name} shape={output_meta.shape} dtype={output_meta.type}")
 
-    print("== Standard pool ==")
-    pool_id, cards = fetch_standard_cards()
+    print("== Card pool ==")
+    pool_id = resolve_pool_id(args.pool)
+    cards = fetch_pool_cards(pool_id)
     if args.limit:
         cards = cards[: args.limit]
         print(f"  truncated to first {len(cards)} for smoke test")
