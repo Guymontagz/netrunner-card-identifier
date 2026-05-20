@@ -247,6 +247,9 @@
         return;
       }
       const top = response.top ?? [];
+      if (response.ocrError) {
+        console.warn(TAG, `OCR error from offscreen: ${response.ocrError}`);
+      }
       logTop3(
         top,
         { sx, sy, sw, sh },

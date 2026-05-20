@@ -311,16 +311,18 @@ async function identify(image) {
   // Visual alone is ambiguous — ask OCR for a tiebreaker.
   let ocrText = "";
   let ocrMs = 0;
+  let ocrError = null;
   try {
     const ocrStart = performance.now();
     ocrText = await runOcr(image);
     ocrMs = (performance.now() - ocrStart) | 0;
   } catch (err) {
+    ocrError = String(err && (err.stack || err.message || err)).slice(0, 300);
     console.warn(TAG, "OCR fallback skipped:", err && (err.message || err));
   }
 
   if (!ocrText) {
-    return { top: top5.slice(0, 3), inferenceMs, ocrText: null, ocrMs };
+    return { top: top5.slice(0, 3), inferenceMs, ocrText: null, ocrMs, ocrError };
   }
 
   const rescored = top5.map((c) => {
