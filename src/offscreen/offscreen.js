@@ -3,12 +3,24 @@
 // content scripts can't do this because the host page's CSP and
 // same-origin-Worker rules apply to them.
 //
+// Pipeline per identify request:
+//   1. Preprocess the dragged region + run the Milo embedder (ONNX/WASM).
+//   2. Cosine similarity against the catalog → top-5 by best-per-card.
+//   3. If top-1 is visually confident (cosine ≥ 0.7 AND margin ≥ 0.1),
+//      ship the top-3 as-is.
+//   4. Otherwise run Tesseract OCR on the source image, fuzzy-match the
+//      extracted text against each top-5 candidate's title, re-rank by
+//      combined visual+title score.
+//
+// Tesseract loads lazily on first ambiguous match — most cardboard webcam
+// identifications hit the confident path and skip OCR entirely.
+//
 // Message protocol (chrome.runtime):
 //   { type: "nr-offscreen-ping" }
 //     → { ok, ready, rows }
 //   { type: "nr-offscreen-identify",
-//     imageData: { width, height, buffer: ArrayBuffer (RGBA Uint8) } }
-//     → { ok, top: [{ cardId, title, type, orient, score, imageUrl, printingId }] }
+//     imageData: { width, height, dataB64: <base64 RGBA> } }
+//     → { ok, top: [{ cardId, title, type, orient, score, ... }], ocrText? }
 
 import * as ort from "../vendor/ort/ort.min.mjs";
 
@@ -18,17 +30,25 @@ const MODEL_URL = chrome.runtime.getURL("src/model/embedder.onnx");
 const CATALOG_BIN_URL = chrome.runtime.getURL("src/model/catalog.bin");
 const CATALOG_JSON_URL = chrome.runtime.getURL("src/model/catalog.json");
 const ORT_WASM_DIR = chrome.runtime.getURL("src/vendor/ort/");
+const TESS_DIR = chrome.runtime.getURL("src/vendor/tesseract/");
 
-// Point ORT at our local WASM files so it doesn't try to fetch from a CDN.
 ort.env.wasm.wasmPaths = ORT_WASM_DIR;
-// We don't have cross-origin isolation (SharedArrayBuffer); use 1 thread.
 ort.env.wasm.numThreads = 1;
-// Don't try WebGPU (jsep) — keep things CPU-only for predictability.
 ort.env.wasm.simd = true;
 
 const INPUT_SIZE = 448;
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
+
+// OCR trigger gates: skip OCR when visual is already confident.
+const OCR_TRIGGER_COS_MAX = 0.7;
+const OCR_TRIGGER_MARGIN = 0.1;
+// Weight applied to the [0,1] title similarity when combining with cosine.
+// 0.4 means a perfect title match can overcome a 0.4-cosine visual deficit.
+const OCR_WEIGHT = 0.4;
+// Upscale small dragged regions before OCR so Tesseract has at least a few
+// hundred pixels of width to work with — small text is its weak spot.
+const OCR_MIN_WIDTH = 300;
 
 const state = {
   ready: false,
@@ -36,12 +56,14 @@ const state = {
   session: null,
   inputName: null,
   outputName: null,
-  catalog: null, // Float32Array (rows * dim)
-  rows: null, // [{ cardId, title, type, orient, imageUrl, printingId }]
+  catalog: null,
+  rows: null,
   dim: 0,
 };
 /** @type {Promise<void>|null} */
 let initPromise = null;
+/** @type {Promise<any>|null} */
+let tesseractPromise = null;
 
 async function fetchBytes(url) {
   const res = await fetch(url);
@@ -71,14 +93,12 @@ async function init() {
         `catalog size mismatch: ${state.catalog.length} floats vs ${state.rows.length}*${state.dim}`,
       );
     }
-
     state.session = await ort.InferenceSession.create(modelBytes, {
       executionProviders: ["wasm"],
       graphOptimizationLevel: "all",
     });
     state.inputName = state.session.inputNames[0];
     state.outputName = state.session.outputNames[0];
-
     state.ready = true;
     console.log(
       TAG,
@@ -97,14 +117,35 @@ function ensureInit() {
   return initPromise;
 }
 
-// Convert an ImageData-like message payload to a normalised CHW float32
-// tensor sized INPUT_SIZE × INPUT_SIZE. The wire format is base64 because
-// Chrome's MV3 sendMessage serializer can demote typed arrays through the
-// service-worker relay.
-function preprocess(image) {
-  if (!image?.dataB64) {
-    throw new Error(`bad imageData: keys=${Object.keys(image ?? {}).join(",")}`);
-  }
+async function loadTesseract() {
+  if (tesseractPromise) return tesseractPromise;
+  tesseractPromise = (async () => {
+    console.log(TAG, "loading Tesseract worker…");
+    const t0 = performance.now();
+    const ts = await import(`${TESS_DIR}tesseract.esm.min.js`);
+    const createWorker = (ts.default && ts.default.createWorker) || ts.createWorker;
+    if (typeof createWorker !== "function") {
+      throw new Error(`Tesseract did not expose createWorker (got: ${Object.keys(ts).join(",")})`);
+    }
+    const worker = await createWorker("eng", 1, {
+      workerPath: `${TESS_DIR}worker.min.js`,
+      corePath: TESS_DIR,
+      langPath: TESS_DIR,
+      cacheMethod: "none",
+    });
+    // PSM 6 = treat the region as a single uniform block of text. Better
+    // than the default for short card titles that span 1–2 lines.
+    await worker.setParameters({ tessedit_pageseg_mode: "6" });
+    console.log(TAG, `Tesseract ready in ${(performance.now() - t0) | 0} ms`);
+    return worker;
+  })().catch((err) => {
+    tesseractPromise = null; // retry on next call
+    throw err;
+  });
+  return tesseractPromise;
+}
+
+function decodeImage(image) {
   const binary = atob(image.dataB64);
   const bytes = new Uint8ClampedArray(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -113,17 +154,17 @@ function preprocess(image) {
       `imageData size mismatch: bytes=${bytes.length} expected=${image.width * image.height * 4}`,
     );
   }
-  const src = new ImageData(bytes, image.width, image.height);
-  // Step 1: draw source into a 448x448 canvas (browser handles resampling).
+  return new ImageData(bytes, image.width, image.height);
+}
+
+function preprocess(image) {
+  const src = decodeImage(image);
   const canvas = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
   const ctx = canvas.getContext("2d");
-  // Source canvas to hold the input ImageData so we can use drawImage to resize.
   const srcCanvas = new OffscreenCanvas(image.width, image.height);
   srcCanvas.getContext("2d").putImageData(src, 0, 0);
   ctx.drawImage(srcCanvas, 0, 0, INPUT_SIZE, INPUT_SIZE);
   const data = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE).data;
-
-  // Step 2: normalize + transpose HWC RGBA → CHW RGB.
   const size = INPUT_SIZE * INPUT_SIZE;
   const out = new Float32Array(3 * size);
   for (let i = 0; i < size; i++) {
@@ -147,13 +188,11 @@ function l2Normalize(vec) {
   return out;
 }
 
-// Cosine similarity (since catalog rows + query are L2-normalised, this is
-// just a dot product) against every catalog row. Deduped by cardId: when
-// the same card appears under multiple printings or orientations, we keep
-// the highest-scoring row so the top-k contains k *distinct* cards. Without
-// this, margin checks misfire when two alt-art printings of the same card
-// both land at the top with near-identical scores.
-function topMatches(query, k = 3) {
+// Cosine similarity against every catalog row, deduped by cardId — the
+// returned top-k contains k *distinct* cards (highest-scoring orientation /
+// printing per card). Without this, margin checks misfire when two
+// near-identical entries of the same card both land at the top.
+function topMatches(query, k = 5) {
   const { catalog, rows, dim } = state;
   const bestByCard = new Map();
   for (let r = 0; r < rows.length; r++) {
@@ -172,6 +211,84 @@ function topMatches(query, k = 3) {
     .map(({ score, row }) => ({ score, ...rows[row] }));
 }
 
+// --- OCR helpers --------------------------------------------------------
+
+async function runOcr(image) {
+  const worker = await loadTesseract();
+  const src = decodeImage(image);
+  // Upscale small drags so Tesseract has enough pixels per character.
+  const scale = Math.max(1, OCR_MIN_WIDTH / image.width);
+  const tw = Math.round(image.width * scale);
+  const th = Math.round(image.height * scale);
+  const canvas = new OffscreenCanvas(tw, th);
+  const ctx = canvas.getContext("2d");
+  const srcCanvas = new OffscreenCanvas(image.width, image.height);
+  srcCanvas.getContext("2d").putImageData(src, 0, 0);
+  ctx.drawImage(srcCanvas, 0, 0, tw, th);
+  try {
+    const { data } = await worker.recognize(canvas);
+    return (data?.text || "").replace(/\s+/g, " ").trim();
+  } catch (err) {
+    console.warn(TAG, "OCR recognize failed:", err);
+    return "";
+  }
+}
+
+function normTitle(s) {
+  return (s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const n = a.length;
+  const m = b.length;
+  let prev = new Array(m + 1);
+  let curr = new Array(m + 1);
+  for (let j = 0; j <= m; j++) prev[j] = j;
+  for (let i = 1; i <= n; i++) {
+    curr[0] = i;
+    const ca = a.charCodeAt(i - 1);
+    for (let j = 1; j <= m; j++) {
+      const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+      const del = prev[j] + 1;
+      const ins = curr[j - 1] + 1;
+      const sub = prev[j - 1] + cost;
+      curr[j] = del < ins ? (del < sub ? del : sub) : ins < sub ? ins : sub;
+    }
+    const t = prev; prev = curr; curr = t;
+  }
+  return prev[m];
+}
+
+// Best similarity between any window of the OCR text and the given title.
+// Returns 0..1 where 1.0 = title appears cleanly in the OCR text.
+function titleSimilarity(ocr, title) {
+  const o = normTitle(ocr);
+  const t = normTitle(title);
+  if (!o || !t) return 0;
+  if (o.includes(t)) return 1.0;
+  // Slide a window of size t.length over o and find the best Levenshtein.
+  if (t.length > o.length) {
+    const d = levenshtein(o, t);
+    return Math.max(0, 1 - d / Math.max(o.length, t.length));
+  }
+  let best = 0;
+  for (let i = 0; i <= o.length - t.length; i++) {
+    const window = o.slice(i, i + t.length);
+    const d = levenshtein(window, t);
+    const sim = 1 - d / t.length;
+    if (sim > best) best = sim;
+    if (best === 1) break;
+  }
+  return best;
+}
+
 async function identify(image) {
   if (!state.ready) throw new Error("offscreen not ready");
   const tensorData = preprocess(image);
@@ -181,8 +298,42 @@ async function identify(image) {
   const inferenceMs = (performance.now() - t0) | 0;
   const raw = out[state.outputName].data;
   const query = l2Normalize(new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4));
-  const top = topMatches(query, 3);
-  return { top, inferenceMs };
+
+  const top5 = topMatches(query, 5);
+  const best = top5[0];
+  const margin = top5[1] ? best.score - top5[1].score : Infinity;
+  const visuallyConfident = best.score >= OCR_TRIGGER_COS_MAX && margin >= OCR_TRIGGER_MARGIN;
+
+  if (visuallyConfident) {
+    return { top: top5.slice(0, 3), inferenceMs, ocrText: null };
+  }
+
+  // Visual alone is ambiguous — ask OCR for a tiebreaker.
+  let ocrText = "";
+  let ocrMs = 0;
+  try {
+    const ocrStart = performance.now();
+    ocrText = await runOcr(image);
+    ocrMs = (performance.now() - ocrStart) | 0;
+  } catch (err) {
+    console.warn(TAG, "OCR fallback skipped:", err && (err.message || err));
+  }
+
+  if (!ocrText) {
+    return { top: top5.slice(0, 3), inferenceMs, ocrText: null, ocrMs };
+  }
+
+  const rescored = top5.map((c) => {
+    const ts = titleSimilarity(ocrText, c.title);
+    return {
+      ...c,
+      visualScore: c.score,
+      titleScore: ts,
+      score: c.score + OCR_WEIGHT * ts,
+    };
+  });
+  rescored.sort((a, b) => b.score - a.score);
+  return { top: rescored.slice(0, 3), inferenceMs, ocrText, ocrMs };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -194,8 +345,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         await ensureInit();
-        const { top, inferenceMs } = await identify(msg.imageData);
-        sendResponse({ ok: true, top, inferenceMs });
+        const result = await identify(msg.imageData);
+        sendResponse({ ok: true, ...result });
       } catch (err) {
         sendResponse({ ok: false, error: String(err?.message ?? err) });
       }

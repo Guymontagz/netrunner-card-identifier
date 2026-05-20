@@ -167,14 +167,23 @@
     return ctx.getImageData(0, 0, w, h);
   }
 
-  function logTop3(top, region, vw, vh, inferenceMs) {
+  function logTop3(top, region, vw, vh, inferenceMs, ocrText, ocrMs) {
     const lines = [
-      `region (${region.sx | 0}, ${region.sy | 0}) ${region.sw | 0}x${region.sh | 0} of ${vw}x${vh} video (inf ${inferenceMs}ms)`,
+      `region (${region.sx | 0}, ${region.sy | 0}) ${region.sw | 0}x${region.sh | 0} of ${vw}x${vh} video (inf ${inferenceMs}ms${ocrMs ? `, ocr ${ocrMs}ms` : ""})`,
     ];
+    if (ocrText) {
+      lines.push(`  OCR: ${JSON.stringify(ocrText.slice(0, 80))}`);
+    }
     for (let i = 0; i < top.length; i++) {
       const t = top[i];
+      // When OCR fired, score = visual + 0.4*title and the components are
+      // surfaced separately so it's clear how each candidate ranked.
+      const breakdown =
+        t.visualScore !== undefined
+          ? `cos=${t.score.toFixed(3)} (vis=${t.visualScore.toFixed(3)} title=${t.titleScore.toFixed(3)})`
+          : `cos=${t.score.toFixed(3)}`;
       lines.push(
-        `  ${i + 1}. ${t.title.padEnd(28).slice(0, 28)} cos=${t.score.toFixed(3)} ${t.orient} ${t.type ?? ""}`,
+        `  ${i + 1}. ${t.title.padEnd(28).slice(0, 28)} ${breakdown} ${t.orient} ${t.type ?? ""}`,
       );
     }
     console.log(TAG, lines.join("\n"));
@@ -239,7 +248,15 @@
         return;
       }
       const top = response.top ?? [];
-      logTop3(top, { sx, sy, sw, sh }, video.videoWidth, video.videoHeight, response.inferenceMs ?? 0);
+      logTop3(
+        top,
+        { sx, sy, sw, sh },
+        video.videoWidth,
+        video.videoHeight,
+        response.inferenceMs ?? 0,
+        response.ocrText,
+        response.ocrMs,
+      );
       if (top.length === 0) return;
       const best = top[0];
       const second = top[1];

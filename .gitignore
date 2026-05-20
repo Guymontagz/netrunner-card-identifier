@@ -4,8 +4,9 @@
 # Catalog builder cache (NRDB card images)
 .cache/
 
-# onnxruntime-web vendor files — fetched via tools/fetch-vendor.sh
+# onnxruntime-web and Tesseract.js vendor files — fetched via tools/fetch-vendor.sh
 src/vendor/ort/
+src/vendor/tesseract/
 
 # Packaged extension ZIPs
 dist/

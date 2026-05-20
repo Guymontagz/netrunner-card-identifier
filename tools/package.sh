@@ -22,6 +22,11 @@ if [[ ! -d src/vendor/ort ]] || [[ -z "$(ls -A src/vendor/ort 2>/dev/null)" ]]; 
   exit 1
 fi
 
+if [[ ! -d src/vendor/tesseract ]] || [[ -z "$(ls -A src/vendor/tesseract 2>/dev/null)" ]]; then
+  echo "ERROR: src/vendor/tesseract/ is empty. Run: bash tools/fetch-vendor.sh" >&2
+  exit 1
+fi
+
 if [[ ! -f src/model/embedder.onnx ]] || [[ ! -f src/model/catalog.bin ]] || [[ ! -f src/model/catalog.json ]]; then
   echo "ERROR: src/model/ artifacts missing. Run: python tools/build-catalog.py" >&2
   exit 1
@@ -42,6 +47,7 @@ zip -r "$OUT" \
   src/icons \
   src/popup \
   src/vendor/ort \
+  src/vendor/tesseract \
   -x "**/.DS_Store" "**/__pycache__/*" "**/*.swp"
 
 SIZE=$(du -sh "$OUT" | cut -f1)

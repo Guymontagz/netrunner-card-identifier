@@ -47,6 +47,7 @@
     {
       "resources": [
         "src/vendor/ort/*",
+        "src/vendor/tesseract/*",
         "src/model/*",
         "src/offscreen/*"
       ],
