@@ -19,18 +19,17 @@
   const MIN_DRAG_PX = 30;
 
   // Cosine thresholds for the embedder. Self-match = 1.0; offline
-  // sanity-check nearest-non-self ≈ 0.5–0.6. Compressed video pulls the
-  // best score down; tuning these is the main accuracy/false-positive
-  // dial. Loosened on May 19 after J-variant augmentation shipped — many
-  // jinteki matches land in the 0.50–0.60 band that the previous 0.60
-  // gate rejected.
-  const COS_ABS = 0.5;
+  // sanity-check nearest-non-self ≈ 0.5–0.6. Compressed jinteki video
+  // pulls the best score down further. Field testing showed correct
+  // top-1 matches landing at 0.45–0.55, so the absolute gate is loose;
+  // the margin gate carries most of the safety.
+  const COS_ABS = 0.45;
   const COS_MARGIN = 0.05;
   // Identity cards (landscape, with shared layout — name banner + portrait
   // art panel + abilities strip) cluster tighter in the embedder's feature
   // space than regular cards do. Use a looser pair when the top-1 is an
   // identity.
-  const COS_ABS_IDENTITY = 0.45;
+  const COS_ABS_IDENTITY = 0.4;
   const COS_MARGIN_IDENTITY = 0.025;
   const IDENTITY_TYPES = new Set(["corp_identity", "runner_identity"]);
 
