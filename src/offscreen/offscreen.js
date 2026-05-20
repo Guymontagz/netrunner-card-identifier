@@ -356,10 +356,18 @@ function titleSimilarity(ocrText, title) {
   const ocrWords = tokenize(ocrText);
   if (ocrWords.length === 0) return 0;
 
-  // Full-title substring on the normalized form — cleanest possible signal.
-  const titleJoined = titleWords.join(" ");
-  const ocrJoined = ocrWords.join(" ");
-  if (ocrJoined.includes(titleJoined)) return 1.0;
+  // Stripped substring match: handles two real-world OCR quirks at once.
+  //  (a) Tesseract often drops spaces between multi-word titles, so
+  //      'Knowledge Seeker' arrives as 'knowledgeseeker'. Comparing both
+  //      sides space-stripped catches it.
+  //  (b) Short title words like 'Owl' (3 chars) would substring-match
+  //      inside arbitrary OCR (kn-OWL-edgeseeker), so require the
+  //      stripped title be at least 6 chars before trusting this path.
+  const titleStripped = titleWords.join("");
+  const ocrStripped = ocrWords.join("");
+  if (titleStripped.length >= 6 && ocrStripped.includes(titleStripped)) {
+    return 1.0;
+  }
 
   let weighted = 0;
   let total = 0;
