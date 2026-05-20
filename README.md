@@ -79,14 +79,31 @@ with the top-3 cosine matches per drag, useful when accuracy is off.
 | Physical cardboard play on webcam (Neon Static-style streams) | ✓ Primary use case |
 | Tournament webcam VODs | ✓ |
 | Hover on NetrunnerDB / jinteki.net / forum card images | ✓ |
-| **jinteki.net play captured in YouTube/Twitch video** | ✗ Out of scope for v1 — the digital renders re-encoded by streaming don't match the embedder's training distribution well |
+| jinteki.net play captured in YouTube/Twitch video | ~ Experimental — see "jinteki augmentation" below |
 | Cards smaller than ~50 px on a 1080p frame | ✗ Not enough pixels after the embedder's 448 × 448 downscale |
 
 The catalog ships with every Netrunner card NetrunnerDB tracks (the
-"Eternal" pool — FFG era through Null Signal era, ~2000 cards × ~9700
-catalog rows including all printings × 4 orientations). To rebuild after a
+"Eternal" pool — FFG era through Null Signal era, ~2000 cards). Each
+card×printing is embedded at 4 rotations plus a "J" variant per rotation
+that simulates how the card looks in jinteki.net stream footage
+(top-cropped + downscaled). Total ≈19,384 catalog rows. To rebuild after a
 new set drops: `python tools/build-catalog.py`. To scope to just the
 current Standard format: `python tools/build-catalog.py --pool standard`.
+
+### jinteki augmentation (experimental)
+
+The `JP/JL/JU/JR` catalog variants are the extension's attempt to identify
+cards shown on YouTube/Twitch videos of jinteki.net play. They simulate
+jinteki's installed-card appearance (top-cropped, downscaled). When the
+diagnostic top-3 log shows a winning `orient=J*`, that's the augmented
+path firing.
+
+Caveat: **ICE cards** share heavy visual layout (subroutines + strength
+box + faction symbol) and their J-variants score very close to each other.
+On a real jinteki video, ICE identification may often land in the
+"ambiguous" gate and refuse to commit. That's the conservative default —
+better silent than confidently wrong. Cardboard webcam ICE remains the
+strong case.
 
 ## Privacy
 

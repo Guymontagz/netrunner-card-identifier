@@ -92,6 +92,25 @@ def preprocess(img: Image.Image) -> np.ndarray:
     return arr.astype(np.float32)
 
 
+def jinteki_variant(img: Image.Image) -> Image.Image:
+    """Simulate how a card looks in a YouTube video of jinteki.net play:
+
+    1. Top 55% crop  — installed cards on jinteki have the bottom hidden under
+       the next card in their stack, so only the title + upper art is visible.
+    2. Bilinear downscale to 80 px on the long side — installed cards are
+       small on screen (~30-80 px wide on 1080p video).
+
+    The final upscale-to-448x448 happens inside preprocess() exactly as it
+    does for runtime queries, so the J-variant catalog row sees the same
+    bilinear-up-from-low-res pixels a real jinteki video query produces.
+    """
+    w, h = img.size
+    cropped = img.crop((0, 0, w, max(1, int(h * 0.55))))
+    cw, ch = cropped.size
+    scale = 80.0 / max(cw, ch)
+    return cropped.resize((max(1, int(cw * scale)), max(1, int(ch * scale))), Image.BILINEAR)
+
+
 def embed(session: ort.InferenceSession, input_name: str, img: Image.Image) -> np.ndarray:
     (out,) = session.run(None, {input_name: preprocess(img)})
     vec = out[0].astype(np.float32)
@@ -163,6 +182,7 @@ def main() -> None:
                 continue
             for orient_key, angle in (("P", 0), ("L", -90), ("U", 180), ("R", 90)):
                 rot = img if angle == 0 else img.rotate(angle, expand=True)
+                # Base orientation embedding.
                 embeddings.append(embed(session, input_meta.name, rot))
                 rows.append({
                     "cardId": c["id"],
@@ -172,16 +192,30 @@ def main() -> None:
                     "imageUrl": IMAGE_URL.format(code=pid),
                     "orient": orient_key,
                 })
+                # Jinteki-in-stream variant: top-cropped + downscaled. Simulates
+                # the appearance of an installed card on a YouTube video of
+                # jinteki.net play.
+                embeddings.append(embed(session, input_meta.name, jinteki_variant(rot)))
+                rows.append({
+                    "cardId": c["id"],
+                    "title": title,
+                    "type": card_type,
+                    "printingId": pid,
+                    "imageUrl": IMAGE_URL.format(code=pid),
+                    "orient": f"J{orient_key}",
+                })
 
     if not embeddings:
         raise SystemExit("no embeddings produced; aborting")
 
     arr = np.stack(embeddings).astype(np.float32)
     print(f"\n== Output ==")
-    by_orient = {"P": 0, "L": 0, "U": 0, "R": 0}
+    by_orient: dict[str, int] = {}
     for r in rows:
         by_orient[r["orient"]] = by_orient.get(r["orient"], 0) + 1
-    print(f"  catalog rows: {len(rows)} ({by_orient})")
+    # Sorted for stable output
+    by_orient_str = ", ".join(f"{k}={v}" for k, v in sorted(by_orient.items()))
+    print(f"  catalog rows: {len(rows)} ({by_orient_str})")
     print(f"  embedding dim: {arr.shape[1]} (expected {EMBED_DIM})")
 
     (args.out / "catalog.bin").write_bytes(arr.tobytes())
