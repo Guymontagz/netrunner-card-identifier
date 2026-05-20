@@ -245,29 +245,50 @@ function upscaleCanvas(src, minWidth) {
   return dst;
 }
 
+// Crop the top (or bottom) strip of a canvas — title bars on Netrunner
+// cards sit in the top ~25% of the displayed area, and OCR is much more
+// reliable on just the title text than the whole card (no card art, no
+// text panel, no counter overlays competing for Tesseract's segmenter).
+function stripCanvas(src, fromBottom = false, fraction = 0.3) {
+  const sw = src.width;
+  const sh = Math.max(1, Math.round(src.height * fraction));
+  const sy = fromBottom ? src.height - sh : 0;
+  const dst = new OffscreenCanvas(sw, sh);
+  dst.getContext("2d").drawImage(src, 0, sy, sw, sh, 0, 0, sw, sh);
+  return dst;
+}
+
 async function runOcr(image) {
   const worker = await loadTesseract();
   const src = decodeImage(image);
   const srcCanvas = new OffscreenCanvas(image.width, image.height);
   srcCanvas.getContext("2d").putImageData(src, 0, 0);
 
-  // For landscape crops we don't know which of three things they are:
-  //   (a) installed ICE on the player's side → title on left, needs -90°
-  //   (b) installed ICE on the opponent's side → title on right, needs +90°
-  //   (c) a horizontal slice of a portrait card (hand/revealed/etc.) →
-  //       title already at the top, needs 0°
-  // Try all three and let titleSimilarity sort it out — one of the OCR
-  // passes will land the title bar at the top of its frame and produce
-  // clean text; the other two will return mostly noise that doesn't
-  // match any title well.
-  // Portrait crops only need 0°.
+  // Compute OCR inputs:
+  //   - Portrait crop: title is at the top → one pass on the top strip.
+  //   - Landscape crop: could be (a) installed ICE on player side, title
+  //     was on the left edge → -90° rotation puts it at the top, take top
+  //     strip; (b) opponent side, title was on right → +90° rotation puts
+  //     it at the BOTTOM, take bottom strip; (c) horizontal slice of a
+  //     portrait card → title already at the top of the 0° image. Three
+  //     passes cover all three.
+  // Cropping to just the title strip (≈ top 30% of the displayed card)
+  // before upscaling means the title text ends up much larger relative
+  // to the OCR input, which is what Tesseract needs.
   const isLandscape = image.width > image.height * 1.1;
-  const rotations = isLandscape ? [0, -90, 90] : [0];
+  const passes = isLandscape
+    ? [
+        { angle: 0, fromBottom: false },
+        { angle: -90, fromBottom: false },
+        { angle: 90, fromBottom: true },
+      ]
+    : [{ angle: 0, fromBottom: false }];
 
   const texts = [];
-  for (const angle of rotations) {
+  for (const { angle, fromBottom } of passes) {
     const rotated = rotateCanvas(srcCanvas, image.width, image.height, angle);
-    const scaled = upscaleCanvas(rotated, OCR_MIN_WIDTH);
+    const strip = stripCanvas(rotated, fromBottom, 0.3);
+    const scaled = upscaleCanvas(strip, OCR_MIN_WIDTH);
     try {
       const { data } = await worker.recognize(scaled);
       const text = (data?.text || "").replace(/\s+/g, " ").trim();
