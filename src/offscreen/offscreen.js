@@ -195,11 +195,10 @@ function l2Normalize(vec) {
   return out;
 }
 
-// Cosine similarity against every catalog row, deduped by cardId — the
-// returned top-k contains k *distinct* cards (highest-scoring orientation /
-// printing per card). Without this, margin checks misfire when two
-// near-identical entries of the same card both land at the top.
-function topMatches(query, k = 5) {
+// Cosine similarity against every catalog row, deduped by cardId — returns
+// a per-card best score (one row per distinct card). Caller sorts and
+// slices as needed.
+function scoreAllCards(query) {
   const { catalog, rows, dim } = state;
   const bestByCard = new Map();
   for (let r = 0; r < rows.length; r++) {
@@ -213,9 +212,8 @@ function topMatches(query, k = 5) {
     }
   }
   return [...bestByCard.values()]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, k)
-    .map(({ score, row }) => ({ score, ...rows[row] }));
+    .map(({ score, row }) => ({ score, ...rows[row] }))
+    .sort((a, b) => b.score - a.score);
 }
 
 // --- OCR helpers --------------------------------------------------------
@@ -387,16 +385,18 @@ async function identify(image) {
   const raw = out[state.outputName].data;
   const query = l2Normalize(new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4));
 
-  // Pull a wider net than top-3 — when OCR is in play, candidates that
-  // visual ranked at position 5–15 can still surface if their title
-  // strongly matches the OCR text.
-  const topN = topMatches(query, 20);
-  const best = topN[0];
-  const margin = topN[1] ? best.score - topN[1].score : Infinity;
+  // Score every distinct card. We need the full ranking so OCR can rescue
+  // candidates the visual ranker buried — jinteki's custom installed-ICE
+  // layout (title + side art panel + counter overlays) doesn't match our
+  // catalog's rotated-portrait J variants, so the correct ICE can land
+  // well outside visual top-20 even when OCR clearly reads its name.
+  const allCards = scoreAllCards(query);
+  const best = allCards[0];
+  const margin = allCards[1] ? best.score - allCards[1].score : Infinity;
   const visuallyConfident = best.score >= OCR_TRIGGER_COS_MAX && margin >= OCR_TRIGGER_MARGIN;
 
   if (visuallyConfident) {
-    return { top: topN.slice(0, 3), inferenceMs, ocrText: null };
+    return { top: allCards.slice(0, 3), inferenceMs, ocrText: null };
   }
 
   // Visual alone is ambiguous — ask OCR for a tiebreaker.
@@ -413,10 +413,15 @@ async function identify(image) {
   }
 
   if (!ocrText) {
-    return { top: topN.slice(0, 3), inferenceMs, ocrText: null, ocrMs, ocrError };
+    return { top: allCards.slice(0, 3), inferenceMs, ocrText: null, ocrMs, ocrError };
   }
 
-  const rescored = topN.map((c) => {
+  // Re-rank EVERY card by combined visual + title similarity. A clean
+  // title read (Tesseract returned "Knowledge Seeker" verbatim) drives
+  // titleScore to 1.0 and overrides the visual ranker; that's the right
+  // call when OCR has high confidence. titleSimilarity's word-based
+  // matching keeps the false-positive rate low for noisy OCR.
+  const rescored = allCards.map((c) => {
     const ts = titleSimilarity(ocrText, c.title);
     return {
       ...c,
