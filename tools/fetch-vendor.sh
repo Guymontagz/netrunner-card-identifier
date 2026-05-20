@@ -48,7 +48,13 @@ fetch_files "$TESS_DEST" "$TESS_BASE" \
   worker.min.js
 fetch_files "$TESS_DEST" "$TESS_CORE_BASE" \
   tesseract-core-simd.wasm.js \
-  tesseract-core-simd.wasm
+  tesseract-core-simd.wasm \
+  tesseract-core-simd-lstm.wasm.js \
+  tesseract-core-simd-lstm.wasm \
+  tesseract-core-lstm.wasm.js \
+  tesseract-core-lstm.wasm \
+  tesseract-core.wasm.js \
+  tesseract-core.wasm
 fetch_files "$TESS_DEST" "$TESSDATA_BASE" \
   eng.traineddata.gz
 
