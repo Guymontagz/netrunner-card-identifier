@@ -351,23 +351,38 @@ function tokenize(s) {
 }
 
 function titleSimilarity(ocrText, title) {
-  const titleWords = tokenize(title);
-  if (titleWords.length === 0) return 0;
-  const ocrWords = tokenize(ocrText);
-  if (ocrWords.length === 0) return 0;
+  const titleNorm = normTitle(title);
+  const ocrNorm = normTitle(ocrText);
+  if (!titleNorm || !ocrNorm) return 0;
 
-  // Stripped substring match: handles two real-world OCR quirks at once.
-  //  (a) Tesseract often drops spaces between multi-word titles, so
-  //      'Knowledge Seeker' arrives as 'knowledgeseeker'. Comparing both
-  //      sides space-stripped catches it.
-  //  (b) Short title words like 'Owl' (3 chars) would substring-match
-  //      inside arbitrary OCR (kn-OWL-edgeseeker), so require the
-  //      stripped title be at least 6 chars before trusting this path.
-  const titleStripped = titleWords.join("");
-  const ocrStripped = ocrWords.join("");
+  // Strips: all letters/digits concatenated, no spaces. These don't honor
+  // the >= 3 word filter, because short fragments like "DZ" + "MZ" are
+  // sometimes Tesseract's split of a single title fragment ("DZMZ") and
+  // are real signal.
+  const titleStripped = titleNorm.replace(/\s+/g, "");
+  const ocrStripped = ocrNorm.replace(/\s+/g, "");
+  if (!titleStripped || !ocrStripped) return 0;
+
+  // Direction A: OCR captured the whole title (with or without spaces).
+  // Guard against short titles like "Owl" (3 chars) accidentally
+  // matching inside a longer OCR string.
   if (titleStripped.length >= 6 && ocrStripped.includes(titleStripped)) {
     return 1.0;
   }
+  // Direction B: OCR captured a clean *prefix or substring* of the title
+  // — common when Tesseract truncates the last word ("DZ MZ Optim" of
+  // "DZMZ Optimizer"). Score proportional to coverage, with a 5-char
+  // minimum on the OCR side to avoid spurious tiny matches.
+  if (ocrStripped.length >= 5 && titleStripped.includes(ocrStripped)) {
+    return ocrStripped.length / titleStripped.length;
+  }
+
+  // Word-based fallback. Filter both sides to words >= 3 chars here so
+  // common short words ('of', 'in') don't inflate the weighted score.
+  const titleWords = titleNorm.split(/\s+/).filter((w) => w.length >= 3);
+  if (titleWords.length === 0) return 0;
+  const ocrWords = ocrNorm.split(/\s+/).filter((w) => w.length >= 3);
+  if (ocrWords.length === 0) return 0;
 
   let weighted = 0;
   let total = 0;
