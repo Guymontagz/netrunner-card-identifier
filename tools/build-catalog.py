@@ -180,9 +180,21 @@ def main() -> None:
             except Exception as e:  # noqa: BLE001
                 print(f"      printing {pid} image fetch failed: {e}")
                 continue
-            for orient_key, angle in (("P", 0), ("L", -90), ("U", 180), ("R", 90)):
+            is_ice = card_type == "ice"
+            # Base orientations: keep all four for every card. Cardboard
+            # webcam streams catch opposing players' cards rotated 180°,
+            # and ICE laid sideways needs both L and R for either server
+            # direction.
+            base_orients = (("P", 0), ("L", -90), ("U", 180), ("R", 90))
+            # Jinteki orientations: only the ones jinteki.net actually
+            # displays. Non-ICE cards are shown portrait (in their native
+            # NRDB orientation, which for identities is already landscape).
+            # ICE is shown portrait in hand AND landscape once
+            # installed/rezzed, so it needs JP plus both landscape rotations
+            # (jinteki may lay ICE either direction depending on server).
+            j_orients = (("P", 0), ("L", -90), ("R", 90)) if is_ice else (("P", 0),)
+            for orient_key, angle in base_orients:
                 rot = img if angle == 0 else img.rotate(angle, expand=True)
-                # Base orientation embedding.
                 embeddings.append(embed(session, input_meta.name, rot))
                 rows.append({
                     "cardId": c["id"],
@@ -192,8 +204,10 @@ def main() -> None:
                     "imageUrl": IMAGE_URL.format(code=pid),
                     "orient": orient_key,
                 })
-                # Jinteki-in-stream variant: top-cropped + downscaled. Simulates
-                # the appearance of an installed card on a YouTube video of
+            for orient_key, angle in j_orients:
+                rot = img if angle == 0 else img.rotate(angle, expand=True)
+                # Jinteki-in-stream variant: top-cropped + downscaled.
+                # Simulates an installed card on a YouTube video of
                 # jinteki.net play.
                 embeddings.append(embed(session, input_meta.name, jinteki_variant(rot)))
                 rows.append({
