@@ -219,25 +219,59 @@ function topMatches(query, k = 5) {
 
 // --- OCR helpers --------------------------------------------------------
 
+function rotateCanvas(srcCanvas, srcW, srcH, angleDeg) {
+  if (angleDeg === 0) return srcCanvas;
+  const rad = (angleDeg * Math.PI) / 180;
+  const sin = Math.abs(Math.sin(rad));
+  const cos = Math.abs(Math.cos(rad));
+  const newW = Math.ceil(srcW * cos + srcH * sin);
+  const newH = Math.ceil(srcW * sin + srcH * cos);
+  const dst = new OffscreenCanvas(newW, newH);
+  const ctx = dst.getContext("2d");
+  ctx.translate(newW / 2, newH / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(srcCanvas, -srcW / 2, -srcH / 2);
+  return dst;
+}
+
+function upscaleCanvas(src, minWidth) {
+  const scale = Math.max(1, minWidth / src.width);
+  if (scale === 1) return src;
+  const tw = Math.round(src.width * scale);
+  const th = Math.round(src.height * scale);
+  const dst = new OffscreenCanvas(tw, th);
+  dst.getContext("2d").drawImage(src, 0, 0, tw, th);
+  return dst;
+}
+
 async function runOcr(image) {
   const worker = await loadTesseract();
   const src = decodeImage(image);
-  // Upscale small drags so Tesseract has enough pixels per character.
-  const scale = Math.max(1, OCR_MIN_WIDTH / image.width);
-  const tw = Math.round(image.width * scale);
-  const th = Math.round(image.height * scale);
-  const canvas = new OffscreenCanvas(tw, th);
-  const ctx = canvas.getContext("2d");
   const srcCanvas = new OffscreenCanvas(image.width, image.height);
   srcCanvas.getContext("2d").putImageData(src, 0, 0);
-  ctx.drawImage(srcCanvas, 0, 0, tw, th);
-  try {
-    const { data } = await worker.recognize(canvas);
-    return (data?.text || "").replace(/\s+/g, " ").trim();
-  } catch (err) {
-    console.warn(TAG, "OCR recognize failed:", err);
-    return "";
+
+  // Landscape crops on jinteki are almost always ICE installed sideways,
+  // and the title text runs 90° to the long axis (left edge for the
+  // player's own ICE, right edge for the opponent's). Tesseract reads
+  // horizontal text, so we try both 90° rotations and concatenate the
+  // outputs — whichever rotation lands the title bar at the top wins.
+  // Portrait crops keep the existing single OCR pass.
+  const isLandscape = image.width > image.height * 1.1;
+  const rotations = isLandscape ? [-90, 90] : [0];
+
+  const texts = [];
+  for (const angle of rotations) {
+    const rotated = rotateCanvas(srcCanvas, image.width, image.height, angle);
+    const scaled = upscaleCanvas(rotated, OCR_MIN_WIDTH);
+    try {
+      const { data } = await worker.recognize(scaled);
+      const text = (data?.text || "").replace(/\s+/g, " ").trim();
+      if (text) texts.push(text);
+    } catch (err) {
+      console.warn(TAG, `OCR recognize (angle=${angle}) failed:`, err && (err.message || err));
+    }
   }
+  return texts.join(" ");
 }
 
 function normTitle(s) {
