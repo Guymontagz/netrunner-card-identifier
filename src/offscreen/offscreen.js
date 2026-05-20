@@ -46,9 +46,10 @@ const OCR_TRIGGER_MARGIN = 0.1;
 // Weight applied to the [0,1] title similarity when combining with cosine.
 // 0.4 means a perfect title match can overcome a 0.4-cosine visual deficit.
 const OCR_WEIGHT = 0.4;
-// Upscale small dragged regions before OCR so Tesseract has at least a few
-// hundred pixels of width to work with — small text is its weak spot.
-const OCR_MIN_WIDTH = 300;
+// Upscale small dragged regions before OCR. Title text in a 100-px crop is
+// only ~5 px tall at native; we need at least ~25 px for Tesseract to read
+// reliably, so the upscale target has to be roughly card-height × 5.
+const OCR_MIN_WIDTH = 500;
 
 const state = {
   ready: false,
@@ -310,27 +311,48 @@ function levenshtein(a, b) {
   return prev[m];
 }
 
-// Best similarity between any window of the OCR text and the given title.
-// Returns 0..1 where 1.0 = title appears cleanly in the OCR text.
+// Longest contiguous run of characters shared by both strings. O(n*m)
+// in time and space — fine for short titles.
+function longestCommonSubstring(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0 || n === 0) return 0;
+  let prev = new Uint16Array(n + 1);
+  let curr = new Uint16Array(n + 1);
+  let best = 0;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a.charCodeAt(i - 1) === b.charCodeAt(j - 1)) {
+        curr[j] = prev[j - 1] + 1;
+        if (curr[j] > best) best = curr[j];
+      } else {
+        curr[j] = 0;
+      }
+    }
+    const t = prev; prev = curr; curr = t;
+    curr.fill(0);
+  }
+  return best;
+}
+
+// Similarity between OCR text and a card title, in [0, 1].
+// 1.0 when the (normalized) title is a clean substring of the OCR text.
+// Partial OCR reads (e.g. "knowled" from "Knowledge Seeker") still get a
+// strong score because we use the longest common substring rather than
+// full-string Levenshtein — the latter punishes asymmetric lengths.
 function titleSimilarity(ocr, title) {
   const o = normTitle(ocr);
   const t = normTitle(title);
-  if (!o || !t) return 0;
+  if (!o || !t || t.length < 3 || o.length < 3) return 0;
   if (o.includes(t)) return 1.0;
-  // Slide a window of size t.length over o and find the best Levenshtein.
-  if (t.length > o.length) {
-    const d = levenshtein(o, t);
-    return Math.max(0, 1 - d / Math.max(o.length, t.length));
-  }
-  let best = 0;
-  for (let i = 0; i <= o.length - t.length; i++) {
-    const window = o.slice(i, i + t.length);
-    const d = levenshtein(window, t);
-    const sim = 1 - d / t.length;
-    if (sim > best) best = sim;
-    if (best === 1) break;
-  }
-  return best;
+  const lcs = longestCommonSubstring(o, t);
+  // Reject matches too short to be meaningful — a 3-char coincidence
+  // would otherwise inflate scores for short titles.
+  if (lcs < 4) return 0;
+  // Normalize against the longer of (half the title length, 5). A 7-char
+  // overlap against a 16-char title is 7/8 = 0.875. A 5-char overlap
+  // against an 11-char title is 5/5.5 ≈ 0.91. Both feel right.
+  return Math.min(1.0, lcs / Math.max(5, t.length * 0.5));
 }
 
 async function identify(image) {
@@ -343,13 +365,16 @@ async function identify(image) {
   const raw = out[state.outputName].data;
   const query = l2Normalize(new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4));
 
-  const top5 = topMatches(query, 5);
-  const best = top5[0];
-  const margin = top5[1] ? best.score - top5[1].score : Infinity;
+  // Pull a wider net than top-3 — when OCR is in play, candidates that
+  // visual ranked at position 5–15 can still surface if their title
+  // strongly matches the OCR text.
+  const topN = topMatches(query, 20);
+  const best = topN[0];
+  const margin = topN[1] ? best.score - topN[1].score : Infinity;
   const visuallyConfident = best.score >= OCR_TRIGGER_COS_MAX && margin >= OCR_TRIGGER_MARGIN;
 
   if (visuallyConfident) {
-    return { top: top5.slice(0, 3), inferenceMs, ocrText: null };
+    return { top: topN.slice(0, 3), inferenceMs, ocrText: null };
   }
 
   // Visual alone is ambiguous — ask OCR for a tiebreaker.
@@ -366,10 +391,10 @@ async function identify(image) {
   }
 
   if (!ocrText) {
-    return { top: top5.slice(0, 3), inferenceMs, ocrText: null, ocrMs, ocrError };
+    return { top: topN.slice(0, 3), inferenceMs, ocrText: null, ocrMs, ocrError };
   }
 
-  const rescored = top5.map((c) => {
+  const rescored = topN.map((c) => {
     const ts = titleSimilarity(ocrText, c.title);
     return {
       ...c,
