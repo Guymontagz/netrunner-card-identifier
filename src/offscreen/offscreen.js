@@ -244,16 +244,39 @@ function upscaleCanvas(src, minWidth) {
 }
 
 // Crop the top (or bottom) strip of a canvas — title bars on Netrunner
-// cards sit in the top ~25% of the displayed area, and OCR is much more
-// reliable on just the title text than the whole card (no card art, no
-// text panel, no counter overlays competing for Tesseract's segmenter).
-function stripCanvas(src, fromBottom = false, fraction = 0.3) {
+// cards sit in the top ~25-30% of the displayed area, and OCR is much
+// more reliable on just the title text than the whole card (no card
+// art, no text panel, no counter overlays competing for Tesseract's
+// segmenter). We pull 40% to give the title some cushion when the drag
+// rectangle includes a few pixels above the card or the title bar is
+// taller than typical (rare but it happens).
+function stripCanvas(src, fromBottom = false, fraction = 0.4) {
   const sw = src.width;
   const sh = Math.max(1, Math.round(src.height * fraction));
   const sy = fromBottom ? src.height - sh : 0;
   const dst = new OffscreenCanvas(sw, sh);
   dst.getContext("2d").drawImage(src, 0, sy, sw, sh, 0, 0, sw, sh);
   return dst;
+}
+
+// Threshold-binarize a canvas: anything brighter than `threshold` becomes
+// pure white, everything else pure black. Netrunner card titles are
+// bright white on dark backgrounds, so this isolates the title text
+// cleanly and removes the bilinear-upscale blur that confuses Tesseract's
+// character segmenter at small sizes.
+function binarizeCanvas(src, threshold = 170) {
+  const ctx = src.getContext("2d");
+  const img = ctx.getImageData(0, 0, src.width, src.height);
+  const px = img.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const luma = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114) | 0;
+    const v = luma > threshold ? 255 : 0;
+    px[i] = v;
+    px[i + 1] = v;
+    px[i + 2] = v;
+  }
+  ctx.putImageData(img, 0, 0);
+  return src;
 }
 
 async function runOcr(image) {
@@ -285,8 +308,9 @@ async function runOcr(image) {
   const texts = [];
   for (const { angle, fromBottom } of passes) {
     const rotated = rotateCanvas(srcCanvas, image.width, image.height, angle);
-    const strip = stripCanvas(rotated, fromBottom, 0.3);
+    const strip = stripCanvas(rotated, fromBottom);
     const scaled = upscaleCanvas(strip, OCR_MIN_WIDTH);
+    binarizeCanvas(scaled);
     try {
       const { data } = await worker.recognize(scaled);
       const text = (data?.text || "").replace(/\s+/g, " ").trim();
