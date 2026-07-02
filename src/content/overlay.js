@@ -1,8 +1,7 @@
-// Shared overlay UI used by hover and click-on-video.
+// Floating card-art overlay for the video recognizer.
 //
 // Exposes window.__nrOverlay = { show(card, anchorRect), hide() }.
-// Loaded as the first content script so both hover.js and video-click.js
-// can rely on it.
+// Loaded as the first content script so video-click.js can rely on it.
 
 (() => {
   if (window.__nrOverlay) return;

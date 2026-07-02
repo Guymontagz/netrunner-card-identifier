@@ -2,16 +2,15 @@
   "manifest_version": 3,
   "name": "Netrunner Card Identifier",
   "version": "0.2.0",
-  "description": "Identify Netrunner cards in stream and tournament video footage with Alt+drag, plus hover-to-zoom on any NetrunnerDB card image.",
+  "description": "Identify Netrunner cards in stream and tournament video footage with Alt+drag.",
   "icons": {
     "16": "src/icons/icon-16.png",
     "32": "src/icons/icon-32.png",
     "48": "src/icons/icon-48.png",
     "128": "src/icons/icon-128.png"
   },
-  "permissions": ["storage", "alarms", "offscreen"],
+  "permissions": ["alarms", "offscreen"],
   "host_permissions": [
-    "https://api-preview.netrunnerdb.com/*",
     "https://card-images.netrunnerdb.com/*"
   ],
   "background": {
@@ -36,7 +35,6 @@
       "matches": ["<all_urls>"],
       "js": [
         "src/content/overlay.js",
-        "src/content/hover.js",
         "src/content/video-click.js"
       ],
       "run_at": "document_idle",

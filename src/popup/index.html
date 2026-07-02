@@ -17,41 +17,15 @@
         margin: 0 0 8px;
         font-weight: 600;
       }
-      dl {
-        display: grid;
-        grid-template-columns: max-content 1fr;
-        gap: 4px 8px;
-        margin: 0 0 12px;
+      p {
+        margin: 0 0 8px;
       }
-      dt {
-        color: #999;
-      }
-      dd {
-        margin: 0;
-        font-variant-numeric: tabular-nums;
-        word-break: break-all;
-      }
-      button {
-        width: 100%;
-        padding: 6px 8px;
-        background: #9147ff;
-        color: #fff;
-        border: 0;
-        border-radius: 4px;
+      kbd {
         font: inherit;
-        cursor: pointer;
-      }
-      button:disabled {
-        opacity: 0.6;
-        cursor: progress;
-      }
-      #status {
-        margin-top: 8px;
-        min-height: 1em;
-        color: #aaa;
-      }
-      #status.err {
-        color: #ff6b6b;
+        background: #333;
+        border: 1px solid #555;
+        border-radius: 3px;
+        padding: 0 4px;
       }
       #about {
         margin: 12px 0 0;
@@ -69,16 +43,11 @@
   </head>
   <body>
     <h1>Netrunner Card Identifier</h1>
-    <dl>
-      <dt>Card pool</dt>
-      <dd id="pool">—</dd>
-      <dt>Cards</dt>
-      <dd id="count">—</dd>
-      <dt>Last sync</dt>
-      <dd id="last">—</dd>
-    </dl>
-    <button id="sync">Sync now</button>
-    <div id="status"></div>
+    <p>
+      Hold <kbd>Alt</kbd> (⌥ Option on Mac) and drag a rectangle around a card
+      in a paused video to identify it. The matched card art floats next to your
+      cursor.
+    </p>
     <p id="about">
       <a href="#" id="about-link">About &amp; source</a>
     </p>
