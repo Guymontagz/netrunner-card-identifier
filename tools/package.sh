@@ -41,7 +41,6 @@ zip -r "$OUT" \
   LICENSE \
   src/background \
   src/content \
-  src/lib \
   src/offscreen \
   src/model \
   src/icons \

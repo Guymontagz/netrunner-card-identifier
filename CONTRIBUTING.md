@@ -6,8 +6,7 @@ is one person, so a few notes upfront.
 ## Scope
 
 This project identifies **physical Netrunner cards in stream/video footage**
-(webcam-on-mat coverage like Neon Static's streams) plus hover-on-image
-lookups on any embedded NetrunnerDB card image. **jinteki.net video
+(webcam-on-mat coverage like Neon Static's streams). **jinteki.net video
 recognition is out of scope for v1** and will likely live in a separate
 recognizer — please open an issue if you want to collaborate on that.
 

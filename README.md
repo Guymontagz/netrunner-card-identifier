@@ -11,10 +11,8 @@ scanner).
 - **Alt+drag on a video** to identify a card by its image. Works well on
   webcam-on-mat physical stream footage (Neon Static, tournament VODs, etc.)
   across all four card orientations.
-- **Hover over any embedded NetrunnerDB card image** on any page to see the
-  full card.
 
-Card data and images come from [NetrunnerDB](https://netrunnerdb.com/);
+Reference card art comes from [NetrunnerDB](https://netrunnerdb.com/);
 identification uses the [Milo](https://huggingface.co/HanClinto/milo)
 ONNX card-embedder running locally via WebAssembly.
 
@@ -66,19 +64,12 @@ Scope below):
 The page console (Cmd+Opt+I → Console) prints `[netrunner-video]` lines
 with the top-3 cosine matches per drag, useful when accuracy is off.
 
-**Hover-on-image:**
-- On NetrunnerDB, in a forum/blog post embedding card images, or anywhere
-  else with NetrunnerDB-hosted images, hover any small card image to see
-  the full art floating beside it. Suppressed automatically when the source
-  image is already large enough to read.
-
 ## Scope and known limitations
 
 | Use case | Works? |
 |---|---|
 | Physical cardboard play on webcam (Neon Static-style streams) | ✓ Primary use case |
 | Tournament webcam VODs | ✓ |
-| Hover on NetrunnerDB / jinteki.net / forum card images | ✓ |
 | jinteki.net play captured in YouTube/Twitch video | ~ Experimental — see "jinteki augmentation" below |
 | Cards smaller than ~50 px on a 1080p frame | ✗ Not enough pixels after the embedder's 448 × 448 downscale |
 
@@ -109,10 +100,10 @@ strong case.
 
 The extension makes no telemetry calls and stores nothing about you. It:
 
-- Queries NetrunnerDB once per week to refresh card metadata.
+- Loads reference card art from NetrunnerDB's image CDN only to display a
+  matched card.
 - Downloads the Milo model from Hugging Face once, when you first build the
   catalog locally. All identification runs on your machine.
-- Stores the card catalog and last-sync timestamp in `chrome.storage.local`.
 
 Full privacy policy: [`store/privacy-policy.md`](store/privacy-policy.md).
 
@@ -121,14 +112,13 @@ Full privacy policy: [`store/privacy-policy.md`](store/privacy-policy.md).
 ```
 manifest.json
 src/
-  background/           service worker (NRDB sync, offscreen lifecycle)
-  content/              overlay.js, hover.js, video-click.js
-  lib/                  NRDB client, chrome.storage wrapper
+  background/           service worker (offscreen lifecycle)
+  content/              overlay.js, video-click.js
   offscreen/            ML inference host (loads ONNX, runs nearest-neighbor)
   model/                embedder.onnx + catalog.bin + catalog.json (committed)
   vendor/ort/           onnxruntime-web (not committed; fetched by setup)
   icons/                extension icons (16/32/48/128)
-  popup/                toolbar popup (sync status, "About" link)
+  popup/                toolbar popup (usage blurb, "About" link)
 tools/
   build-catalog.py      offline catalog builder (Python + onnxruntime)
   fetch-vendor.sh       downloads onnxruntime-web into src/vendor/ort/

@@ -5,8 +5,6 @@
 // and sent to the background, which routes it to an offscreen document
 // that runs the Milo ONNX embedder. The offscreen reply contains the top-3
 // nearest catalog rows by cosine similarity.
-//
-// Hover-on-<img> (URL-based, in hover.js) is unchanged and unrelated.
 
 (() => {
   const TAG = "[netrunner-video]";
