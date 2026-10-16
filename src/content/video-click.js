@@ -298,6 +298,7 @@
       if (!hit) return;
       e.preventDefault();
       e.stopPropagation();
+      if (!hit.video.paused) hit.video.pause();
       dragging = true;
       anchorX = e.clientX;
       anchorY = e.clientY;
